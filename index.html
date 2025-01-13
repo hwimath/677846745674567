@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>분수의 크기 비교</title>
+    <!-- MathJax 라이브러리 로드 -->
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f8ff;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+        }
+        #start-screen, #game-screen, #end-screen {
+            display: none;
+            padding: 20px;
+        }
+        #start-screen.visible, #game-screen.visible, #end-screen.visible {
+            display: block;
+        }
+        h1 {
+            color: #2e8b57;
+            margin-bottom: 10px;
+        }
+        h2 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .button {
+            padding: 15px 25px;
+            font-size: 18px;
+            margin: 10px;
+            cursor: pointer;
+            border: none;
+            border-radius: 8px;
+            background-color: #20b2aa;
+            color: white;
+            transition: background-color 0.3s;
+        }
+        .button:hover {
+            background-color: #3cb371;
+        }
+        #stats {
+            margin-top: 20px;
+            font-size: 18px;
+        }
+        #message {
+            font-size: 22px;
+            color: #dc143c;
+            margin-top: 20px;
+            min-height: 30px;
+        }
+        .question-container {
+            margin: 20px 0;
+            text-align: left;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .question {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        .options {
+            list-style-type: none;
+            padding: 0;
+        }
+        .options li {
+            margin: 10px 0;
+        }
+        .option-button {
+            padding: 10px 20px;
+            font-size: 18px;
+            cursor: pointer;
+            border: 2px solid #20b2aa;
+            border-radius: 8px;
+            background-color: white;
+            transition: background-color 0.3s, color 0.3s;
+            width: 100%;
+            text-align: left;
+        }
+        .option-button:hover {
+            background-color: #20b2aa;
+            color: white;
+        }
+        .option-button.correct {
+            background-color: #32cd32;
+            color: white;
+            border-color: #32cd32;
+        }
+        .option-button.incorrect {
+            background-color: #ff6347;
+            color: white;
+            border-color: #ff6347;
+        }
+        /* 이름 입력 필드 스타일 */
+        #name-input {
+            padding: 10px;
+            font-size: 18px;
+            width: 80%;
+            max-width: 300px;
+            margin-bottom: 20px;
+            border: 2px solid #20b2aa;
+            border-radius: 8px;
+        }
+        /* 응답 메시지 스타일 */
+        #response {
+            margin-top: 20px;
+            font-size: 18px;
+            color: #333;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 시작 화면 -->
+    <div id="start-screen" class="visible">
+        <h1>분수의 크기 비교</h1>
+        <h2>이름을 입력하세요</h2>
+        <input type="text" id="player-name" placeholder="이름을 입력하세요" />
+        <h2>난이도를 선택하세요</h2>
+        <button class="button" onclick="startGame('highest')">최상</button>
+        <button class="button" onclick="startGame('high')">상</button>
+        <button class="button" onclick="startGame('medium')">중</button>
+        <button class="button" onclick="startGame('low')">하</button>
+    </div>
+
+    <!-- 게임 화면 -->
+    <div id="game-screen">
+        <h1>분수의 크기 비교</h1>
+        <div id="question-container">
+            <!-- 현재 문제가 여기 표시됩니다 -->
+        </div>
+        <div id="message"></div>
+        <div id="stats">
+            <p>점수: <span id="score">0</span></p>
+            <p>남은 시간: <span id="timer">0</span>초</p>
+            <p>남은 기회: <span id="lives">3</span></p>
+            <p>진행 상황: <span id="progress">1</span> / 50</p>
+        </div>
+    </div>
+
+    <!-- 종료 화면 -->
+    <div id="end-screen">
+        <h1>게임 종료!</h1>
+        <p>최종 점수: <span id="final-score">0</span></p>
+        <button class="button" onclick="submitScore()">점수 전송</button>
+        <button class="button" onclick="restartGame()">다시 시작</button>
+        <div id="response"></div>
+    </div>
+
+    <script>
+        window.onload = function() {
+            // 난이도별 설정
+            const difficultySettings = {
+                'highest': { timePerQuestion: 10, points: 20 },
+                'high': { timePerQuestion: 20, points: 15 },
+                'medium': { timePerQuestion: 30, points: 10 },
+                'low': { timePerQuestion: null, points: 5 } // '하' 난이도는 시간 제한 없음
+            };
+            let difficulty;
+            let timeLimit;
+            let score = 0;
+            let currentQuestionIndex = 0;
+            let shuffledQuestions = [];
+            let timerInterval;
+            let remainingTime;
+            let lives = 3;
+            let playerName = '';
+            let startTime;
+            let elapsedTime = 0;
+
+            // 문제 목록 (총 50개)
+            const problems = [
+                // 유형 1: 분자가 같은 분수 비교 (분자가 1인 경우)
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{2}\\) 와 \\(\\dfrac{1}{3}\\)",
+                    options: ["\\(\\dfrac{1}{2}\\)", "\\(\\dfrac{1}{3}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{2}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{4}\\) 와 \\(\\dfrac{1}{5}\\)",
+                    options: ["\\(\\dfrac{1}{4}\\)", "\\(\\dfrac{1}{5}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{4}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{6}\\) 와 \\(\\dfrac{1}{7}\\)",
+                    options: ["\\(\\dfrac{1}{6}\\)", "\\(\\dfrac{1}{7}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{6}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{8}\\) 와 \\(\\dfrac{1}{9}\\)",
+                    options: ["\\(\\dfrac{1}{8}\\)", "\\(\\dfrac{1}{9}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{8}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{10}\\) 와 \\(\\dfrac{1}{11}\\)",
+                    options: ["\\(\\dfrac{1}{10}\\)", "\\(\\dfrac{1}{11}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{10}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{12}\\) 와 \\(\\dfrac{1}{13}\\)",
+                    options: ["\\(\\dfrac{1}{12}\\)", "\\(\\dfrac{1}{13}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{12}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{14}\\) 와 \\(\\dfrac{1}{15}\\)",
+                    options: ["\\(\\dfrac{1}{14}\\)", "\\(\\dfrac{1}{15}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{14}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{16}\\) 와 \\(\\dfrac{1}{17}\\)",
+                    options: ["\\(\\dfrac{1}{16}\\)", "\\(\\dfrac{1}{17}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{16}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{18}\\) 와 \\(\\dfrac{1}{19}\\)",
+                    options: ["\\(\\dfrac{1}{18}\\)", "\\(\\dfrac{1}{19}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{18}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{3}\\) 와 \\(\\dfrac{1}{5}\\)",
+                    options: ["\\(\\dfrac{1}{3}\\)", "\\(\\dfrac{1}{5}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{3}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{4}\\) 와 \\(\\dfrac{1}{6}\\)",
+                    options: ["\\(\\dfrac{1}{4}\\)", "\\(\\dfrac{1}{6}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{4}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{5}\\) 와 \\(\\dfrac{1}{7}\\)",
+                    options: ["\\(\\dfrac{1}{5}\\)", "\\(\\dfrac{1}{7}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{5}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{6}\\) 와 \\(\\dfrac{1}{8}\\)",
+                    options: ["\\(\\dfrac{1}{6}\\)", "\\(\\dfrac{1}{8}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{6}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{7}\\) 와 \\(\\dfrac{1}{9}\\)",
+                    options: ["\\(\\dfrac{1}{7}\\)", "\\(\\dfrac{1}{9}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{7}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{8}\\) 와 \\(\\dfrac{1}{10}\\)",
+                    options: ["\\(\\dfrac{1}{8}\\)", "\\(\\dfrac{1}{10}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{8}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{9}\\) 와 \\(\\dfrac{1}{11}\\)",
+                    options: ["\\(\\dfrac{1}{9}\\)", "\\(\\dfrac{1}{11}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{9}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{2}\\) 와 \\(\\dfrac{1}{4}\\)",
+                    options: ["\\(\\dfrac{1}{2}\\)", "\\(\\dfrac{1}{4}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{2}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{3}\\) 와 \\(\\dfrac{1}{6}\\)",
+                    options: ["\\(\\dfrac{1}{3}\\)", "\\(\\dfrac{1}{6}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{3}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{5}\\) 와 \\(\\dfrac{1}{10}\\)",
+                    options: ["\\(\\dfrac{1}{5}\\)", "\\(\\dfrac{1}{10}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{5}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{7}\\) 와 \\(\\dfrac{1}{14}\\)",
+                    options: ["\\(\\dfrac{1}{7}\\)", "\\(\\dfrac{1}{14}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{7}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{9}\\) 와 \\(\\dfrac{1}{18}\\)",
+                    options: ["\\(\\dfrac{1}{9}\\)", "\\(\\dfrac{1}{18}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{9}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{11}\\) 와 \\(\\dfrac{1}{13}\\)",
+                    options: ["\\(\\dfrac{1}{11}\\)", "\\(\\dfrac{1}{13}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{11}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{12}\\) 와 \\(\\dfrac{1}{15}\\)",
+                    options: ["\\(\\dfrac{1}{12}\\)", "\\(\\dfrac{1}{15}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{12}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{13}\\) 와 \\(\\dfrac{1}{17}\\)",
+                    options: ["\\(\\dfrac{1}{13}\\)", "\\(\\dfrac{1}{17}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{13}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{14}\\) 와 \\(\\dfrac{1}{19}\\)",
+                    options: ["\\(\\dfrac{1}{14}\\)", "\\(\\dfrac{1}{19}\\)"],
+                    correctAnswer: "\\(\\dfrac{1}{14}\\)"
+                },
+                // 유형 2: 분모가 같은 분수 비교
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{2}{5}\\) 와 \\(\\dfrac{3}{5}\\)",
+                    options: ["\\(\\dfrac{2}{5}\\)", "\\(\\dfrac{3}{5}\\)"],
+                    correctAnswer: "\\(\\dfrac{3}{5}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{4}{7}\\) 와 \\(\\dfrac{5}{7}\\)",
+                    options: ["\\(\\dfrac{4}{7}\\)", "\\(\\dfrac{5}{7}\\)"],
+                    correctAnswer: "\\(\\dfrac{5}{7}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{6}{8}\\) 와 \\(\\dfrac{7}{8}\\)",
+                    options: ["\\(\\dfrac{6}{8}\\)", "\\(\\dfrac{7}{8}\\)"],
+                    correctAnswer: "\\(\\dfrac{7}{8}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{9}\\) 와 \\(\\dfrac{2}{9}\\)",
+                    options: ["\\(\\dfrac{1}{9}\\)", "\\(\\dfrac{2}{9}\\)"],
+                    correctAnswer: "\\(\\dfrac{2}{9}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{3}{10}\\) 와 \\(\\dfrac{5}{10}\\)",
+                    options: ["\\(\\dfrac{3}{10}\\)", "\\(\\dfrac{5}{10}\\)"],
+                    correctAnswer: "\\(\\dfrac{5}{10}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{2}{11}\\) 와 \\(\\dfrac{9}{11}\\)",
+                    options: ["\\(\\dfrac{2}{11}\\)", "\\(\\dfrac{9}{11}\\)"],
+                    correctAnswer: "\\(\\dfrac{9}{11}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{4}{12}\\) 와 \\(\\dfrac{7}{12}\\)",
+                    options: ["\\(\\dfrac{4}{12}\\)", "\\(\\dfrac{7}{12}\\)"],
+                    correctAnswer: "\\(\\dfrac{7}{12}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{5}{13}\\) 와 \\(\\dfrac{8}{13}\\)",
+                    options: ["\\(\\dfrac{5}{13}\\)", "\\(\\dfrac{8}{13}\\)"],
+                    correctAnswer: "\\(\\dfrac{8}{13}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{6}{14}\\) 와 \\(\\dfrac{9}{14}\\)",
+                    options: ["\\(\\dfrac{6}{14}\\)", "\\(\\dfrac{9}{14}\\)"],
+                    correctAnswer: "\\(\\dfrac{9}{14}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{3}{15}\\) 와 \\(\\dfrac{11}{15}\\)",
+                    options: ["\\(\\dfrac{3}{15}\\)", "\\(\\dfrac{11}{15}\\)"],
+                    correctAnswer: "\\(\\dfrac{11}{15}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{7}{16}\\) 와 \\(\\dfrac{9}{16}\\)",
+                    options: ["\\(\\dfrac{7}{16}\\)", "\\(\\dfrac{9}{16}\\)"],
+                    correctAnswer: "\\(\\dfrac{9}{16}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{5}{17}\\) 와 \\(\\dfrac{12}{17}\\)",
+                    options: ["\\(\\dfrac{5}{17}\\)", "\\(\\dfrac{12}{17}\\)"],
+                    correctAnswer: "\\(\\dfrac{12}{17}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{8}{18}\\) 와 \\(\\dfrac{15}{18}\\)",
+                    options: ["\\(\\dfrac{8}{18}\\)", "\\(\\dfrac{15}{18}\\)"],
+                    correctAnswer: "\\(\\dfrac{15}{18}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{2}{19}\\) 와 \\(\\dfrac{17}{19}\\)",
+                    options: ["\\(\\dfrac{2}{19}\\)", "\\(\\dfrac{17}{19}\\)"],
+                    correctAnswer: "\\(\\dfrac{17}{19}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{4}\\) 와 \\(\\dfrac{3}{4}\\)",
+                    options: ["\\(\\dfrac{1}{4}\\)", "\\(\\dfrac{3}{4}\\)"],
+                    correctAnswer: "\\(\\dfrac{3}{4}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{2}{5}\\) 와 \\(\\dfrac{4}{5}\\)",
+                    options: ["\\(\\dfrac{2}{5}\\)", "\\(\\dfrac{4}{5}\\)"],
+                    correctAnswer: "\\(\\dfrac{4}{5}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{3}{6}\\) 와 \\(\\dfrac{5}{6}\\)",
+                    options: ["\\(\\dfrac{3}{6}\\)", "\\(\\dfrac{5}{6}\\)"],
+                    correctAnswer: "\\(\\dfrac{5}{6}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{1}{7}\\) 와 \\(\\dfrac{6}{7}\\)",
+                    options: ["\\(\\dfrac{1}{7}\\)", "\\(\\dfrac{6}{7}\\)"],
+                    correctAnswer: "\\(\\dfrac{6}{7}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{2}{8}\\) 와 \\(\\dfrac{7}{8}\\)",
+                    options: ["\\(\\dfrac{2}{8}\\)", "\\(\\dfrac{7}{8}\\)"],
+                    correctAnswer: "\\(\\dfrac{7}{8}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{3}{9}\\) 와 \\(\\dfrac{8}{9}\\)",
+                    options: ["\\(\\dfrac{3}{9}\\)", "\\(\\dfrac{8}{9}\\)"],
+                    correctAnswer: "\\(\\dfrac{8}{9}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{4}{10}\\) 와 \\(\\dfrac{9}{10}\\)",
+                    options: ["\\(\\dfrac{4}{10}\\)", "\\(\\dfrac{9}{10}\\)"],
+                    correctAnswer: "\\(\\dfrac{9}{10}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{5}{11}\\) 와 \\(\\dfrac{10}{11}\\)",
+                    options: ["\\(\\dfrac{5}{11}\\)", "\\(\\dfrac{10}{11}\\)"],
+                    correctAnswer: "\\(\\dfrac{10}{11}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{6}{12}\\) 와 \\(\\dfrac{11}{12}\\)",
+                    options: ["\\(\\dfrac{6}{12}\\)", "\\(\\dfrac{11}{12}\\)"],
+                    correctAnswer: "\\(\\dfrac{11}{12}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{2}{13}\\) 와 \\(\\dfrac{11}{13}\\)",
+                    options: ["\\(\\dfrac{2}{13}\\)", "\\(\\dfrac{11}{13}\\)"],
+                    correctAnswer: "\\(\\dfrac{11}{13}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{4}{14}\\) 와 \\(\\dfrac{13}{14}\\)",
+                    options: ["\\(\\dfrac{4}{14}\\)", "\\(\\dfrac{13}{14}\\)"],
+                    correctAnswer: "\\(\\dfrac{13}{14}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{3}{16}\\) 와 \\(\\dfrac{12}{16}\\)",
+                    options: ["\\(\\dfrac{3}{16}\\)", "\\(\\dfrac{12}{16}\\)"],
+                    correctAnswer: "\\(\\dfrac{12}{16}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{5}{18}\\) 와 \\(\\dfrac{14}{18}\\)",
+                    options: ["\\(\\dfrac{5}{18}\\)", "\\(\\dfrac{14}{18}\\)"],
+                    correctAnswer: "\\(\\dfrac{14}{18}\\)"
+                },
+                {
+                    question: "다음 두 분수 중 큰 수를 고르세요: \\(\\dfrac{7}{19}\\) 와 \\(\\dfrac{16}{19}\\)",
+                    options: ["\\(\\dfrac{7}{19}\\)", "\\(\\dfrac{16}{19}\\)"],
+                    correctAnswer: "\\(\\dfrac{16}{19}\\)"
+                }
+            ];
+
+            // 게임 시작 함수
+            window.startGame = function(selectedDifficulty) {
+                playerName = document.getElementById('player-name').value.trim();
+                if (playerName === "") {
+                    alert("이름을 입력해주세요.");
+                    return;
+                }
+
+                difficulty = selectedDifficulty;
+                timeLimit = difficultySettings[difficulty].timePerQuestion;
+                document.getElementById('start-screen').classList.remove('visible');
+                document.getElementById('game-screen').classList.add('visible');
+                score = 0;
+                lives = 3;
+                currentQuestionIndex = 0;
+                shuffledQuestions = shuffleArray([...problems]); // 문제 목록 섞기
+                updateStats();
+                renderQuestion();
+                startTime = Date.now(); // 게임 시작 시간 기록
+            }
+
+            // 배열 섞기 함수
+            function shuffleArray(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    let j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+                return array;
+            }
+
+            // 현재 문제 렌더링 함수
+            function renderQuestion() {
+                if (currentQuestionIndex >= shuffledQuestions.length || lives <= 0) {
+                    endGame();
+                    return;
+                }
+                const container = document.getElementById('question-container');
+                container.innerHTML = '';
+                const currentQuestion = shuffledQuestions[currentQuestionIndex];
+
+                // 옵션을 랜덤하게 섞기
+                let options = shuffleArray([...currentQuestion.options]);
+                // 정답 인덱스 찾기
+                let correctAnswerIndex = options.indexOf(currentQuestion.correctAnswer);
+
+                // 현재 질문의 정답 인덱스를 저장
+                currentQuestion.answerIndex = correctAnswerIndex;
+
+                const div = document.createElement('div');
+                div.className = 'question-container';
+                div.innerHTML = `
+                    <div class="question">${currentQuestion.question}</div>
+                    <ul class="options">
+                        ${options.map((option, index) => `<li><button class="option-button" data-option-index="${index}">${option}</button></li>`).join('')}
+                    </ul>
+                `;
+                container.appendChild(div);
+                // 옵션 버튼에 이벤트 리스너 추가
+                const optionButtons = document.querySelectorAll('.option-button');
+                optionButtons.forEach(button => {
+                    button.addEventListener('click', function() {
+                        const selectedOptionIndex = parseInt(this.getAttribute('data-option-index'));
+                        checkAnswer(selectedOptionIndex);
+                    });
+                });
+                MathJax.typesetPromise();
+                document.getElementById('message').innerHTML = '';
+
+                // 타이머 설정
+                if (timeLimit !== null) {
+                    remainingTime = timeLimit;
+                    document.getElementById('timer').innerText = remainingTime;
+                    clearInterval(timerInterval);
+                    timerInterval = setInterval(() => {
+                        remainingTime--;
+                        document.getElementById('timer').innerText = remainingTime;
+                        if (remainingTime <= 0) {
+                            clearInterval(timerInterval);
+                            checkAnswer(-1); // 시간 초과 시 오답 처리
+                        }
+                    }, 1000);
+                } else {
+                    document.getElementById('timer').innerText = '무제한';
+                }
+            }
+
+            // 답안 확인 함수
+            window.checkAnswer = function(selectedOptionIndex) {
+                clearInterval(timerInterval);
+                const currentQuestion = shuffledQuestions[currentQuestionIndex];
+                let isCorrect = false;
+                let correctAnswerIndex = currentQuestion.answerIndex;
+
+                if (selectedOptionIndex === correctAnswerIndex) {
+                    isCorrect = true;
+                    score += difficultySettings[difficulty].points;
+                    document.getElementById('message').innerHTML = '정답입니다! 🎉';
+                } else {
+                    lives--;
+                    document.getElementById('message').innerHTML = `틀렸습니다! 정답은 ${currentQuestion.correctAnswer} 입니다. 😢`;
+                    if (lives <= 0) {
+                        endGame();
+                        return;
+                    }
+                }
+
+                updateStats();
+                highlightOptions(selectedOptionIndex, correctAnswerIndex);
+                disableOptions();
+
+                // 다음 문제로 이동
+                setTimeout(() => {
+                    currentQuestionIndex++;
+                    renderQuestion();
+                }, 2000);
+            }
+
+            // 옵션 강조 표시 함수
+            function highlightOptions(selectedOptionIndex, correctAnswerIndex) {
+                const buttons = document.querySelectorAll('.option-button');
+                buttons.forEach((button, index) => {
+                    if (index === correctAnswerIndex) {
+                        button.classList.add('correct');
+                    }
+                    if (index === selectedOptionIndex && selectedOptionIndex !== correctAnswerIndex) {
+                        button.classList.add('incorrect');
+                    }
+                });
+            }
+
+            // 옵션 비활성화 함수
+            function disableOptions() {
+                const buttons = document.querySelectorAll('.option-button');
+                buttons.forEach(button => {
+                    button.disabled = true;
+                });
+            }
+
+            // 통계 업데이트 함수
+            function updateStats() {
+                document.getElementById('score').innerText = score;
+                document.getElementById('progress').innerText = currentQuestionIndex + 1;
+                document.getElementById('lives').innerText = lives;
+            }
+
+            // 게임 종료 함수
+            function endGame() {
+                clearInterval(timerInterval);
+                document.getElementById('game-screen').classList.remove('visible');
+                document.getElementById('end-screen').classList.add('visible');
+                document.getElementById('final-score').innerText = score;
+                elapsedTime = Math.floor((Date.now() - startTime) / 1000); // 초 단위로 계산
+            }
+
+            // 게임 재시작 함수
+            window.restartGame = function() {
+                document.getElementById('end-screen').classList.remove('visible');
+                document.getElementById('start-screen').classList.add('visible');
+                document.getElementById('player-name').value = ''; // 이름 입력 필드 초기화
+                document.getElementById('response').innerText = ''; // 응답 메시지 초기화
+            }
+
+            // 점수 전송 함수
+            window.submitScore = function() {
+                saveData('분수의 크기 비교', playerName, score, elapsedTime);
+            }
+
+            // 데이터 전송 함수
+            window.saveData = async function(game, name, score, elapsedTime) {
+                const FUNCTION_URL = "https://us-central1-record-f420d.cloudfunctions.net/report";
+
+                const requestData = {
+                    game,
+                    name,
+                    score: parseInt(score, 10),
+                    elapsedTime: parseInt(elapsedTime, 10)
+                };
+
+                try {
+                    const response = await fetch(FUNCTION_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(requestData)
+                    });
+
+                    const responseData = await response.json();
+
+                    if (response.ok) {
+                        document.getElementById('response').innerText = 
+                            `성공: ${JSON.stringify(responseData, null, 2)}`;
+                    } else {
+                        document.getElementById('response').innerText = 
+                            `오류: ${JSON.stringify(responseData, null, 2)}`;
+                    }
+                } catch (error) {
+                    console.error('요청 실패:', error);
+                    document.getElementById('response').innerText = 
+                        `네트워크 오류: ${error.message}`;
+                }
+            } 
+        };
+    </script>
+
+</body>
+</html>
